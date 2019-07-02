@@ -5,22 +5,23 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/mattermost/go-i18n/v2/internal"
 	"golang.org/x/text/language"
 	yaml "gopkg.in/yaml.v2"
 )
 
-var simpleMessage = MustNewMessage(map[string]string{
+var simpleMessage = internal.MustNewMessage(map[string]string{
 	"id":    "simple",
 	"other": "simple translation",
 })
 
-var detailMessage = MustNewMessage(map[string]string{
+var detailMessage = internal.MustNewMessage(map[string]string{
 	"id":          "detail",
 	"description": "detail description",
 	"other":       "detail translation",
 })
 
-var everythingMessage = MustNewMessage(map[string]string{
+var everythingMessage = internal.MustNewMessage(map[string]string{
 	"id":          "everything",
 	"description": "everything description",
 	"zero":        "zero translation",
@@ -32,15 +33,39 @@ var everythingMessage = MustNewMessage(map[string]string{
 })
 
 func TestPseudoLanguage(t *testing.T) {
-	bundle := NewBundle(language.English)
+	bundle := &Bundle{DefaultLanguage: language.English}
 	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
-	expected := "nuqneH"
+	expected := "simple simple"
 	bundle.MustParseMessageFileBytes([]byte(`
 # Comment
-hello = "`+expected+`"
-`), "art-x-klingon.toml")
+simple = "simple simple"
+`), "en-double.toml")
+	localizer := NewLocalizer(bundle, "en-double")
+	localized, err := localizer.Localize(&LocalizeConfig{MessageID: "simple"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if localized != expected {
+		t.Fatalf("expected %q\ngot %q", expected, localized)
+	}
+}
+
+func TestPseudoLanguagePlural(t *testing.T) {
+	bundle := &Bundle{DefaultLanguage: language.English}
+	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
+	bundle.MustParseMessageFileBytes([]byte(`
+[everything]
+few = "few translation"
+many = "many translation"
+one = "one translation"
+other = "other translation"
+two = "two translation"
+zero = "zero translation"
+`), "en-double.toml")
+	localizer := NewLocalizer(bundle, "en-double")
 	{
-		localized, err := NewLocalizer(bundle, "art-x-klingon").Localize(&LocalizeConfig{MessageID: "hello"})
+		expected := "other translation"
+		localized, err := localizer.Localize(&LocalizeConfig{MessageID: "everything", PluralCount: 2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,18 +74,9 @@ hello = "`+expected+`"
 		}
 	}
 	{
-		localized, err := NewLocalizer(bundle, "art").Localize(&LocalizeConfig{MessageID: "hello"})
+		expected := "one translation"
+		localized, err := localizer.Localize(&LocalizeConfig{MessageID: "everything", PluralCount: 1})
 		if err != nil {
-			t.Fatal(err)
-		}
-		if localized != expected {
-			t.Fatalf("expected %q\ngot %q", expected, localized)
-		}
-	}
-	{
-		expected := ""
-		localized, err := NewLocalizer(bundle, "en").Localize(&LocalizeConfig{MessageID: "hello"})
-		if err == nil {
 			t.Fatal(err)
 		}
 		if localized != expected {
@@ -70,7 +86,7 @@ hello = "`+expected+`"
 }
 
 func TestJSON(t *testing.T) {
-	bundle := NewBundle(language.English)
+	var bundle Bundle
 	bundle.MustParseMessageFileBytes([]byte(`{
 	"simple": "simple translation",
 	"detail": {
@@ -94,7 +110,7 @@ func TestJSON(t *testing.T) {
 }
 
 func TestYAML(t *testing.T) {
-	bundle := NewBundle(language.English)
+	var bundle Bundle
 	bundle.RegisterUnmarshalFunc("yaml", yaml.Unmarshal)
 	bundle.MustParseMessageFileBytes([]byte(`
 # Comment
@@ -122,7 +138,7 @@ everything:
 }
 
 func TestTOML(t *testing.T) {
-	bundle := NewBundle(language.English)
+	var bundle Bundle
 	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
 	bundle.MustParseMessageFileBytes([]byte(`
 # Comment
@@ -150,7 +166,7 @@ other = "other translation"
 }
 
 func TestV1Format(t *testing.T) {
-	bundle := NewBundle(language.English)
+	var bundle Bundle
 	bundle.MustParseMessageFileBytes([]byte(`[
 	{
 		"id": "simple",
@@ -177,7 +193,7 @@ func TestV1Format(t *testing.T) {
 }
 
 func TestV1FlatFormat(t *testing.T) {
-	bundle := NewBundle(language.English)
+	var bundle Bundle
 	bundle.MustParseMessageFileBytes([]byte(`{
 	"simple": {
 		"other": "simple translation"
@@ -199,8 +215,8 @@ func TestV1FlatFormat(t *testing.T) {
 	expectMessage(t, bundle, language.AmericanEnglish, "everything", &e)
 }
 
-func expectMessage(t *testing.T, bundle *Bundle, tag language.Tag, messageID string, message *Message) {
-	expected := NewMessageTemplate(message)
+func expectMessage(t *testing.T, bundle Bundle, tag language.Tag, messageID string, message *Message) {
+	expected := internal.NewMessageTemplate(message)
 	actual := bundle.messageTemplates[tag][messageID]
 	if !reflect.DeepEqual(actual, expected) {
 		t.Errorf("bundle.MessageTemplates[%q][%q] = %#v; want %#v", tag, messageID, actual, expected)

@@ -1,10 +1,10 @@
-package i18n
+package internal
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/mattermost/go-i18n/v2/internal/plural"
 )
 
 func TestMessageTemplate(t *testing.T) {

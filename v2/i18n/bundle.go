@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/mattermost/go-i18n/v2/internal"
+	"github.com/mattermost/go-i18n/v2/internal/plural"
 
 	"golang.org/x/text/language"
 )
 
 // UnmarshalFunc unmarshals data into v.
-type UnmarshalFunc func(data []byte, v interface{}) error
+type UnmarshalFunc = internal.UnmarshalFunc
 
 // Bundle stores a set of messages and pluralization rules.
 // Most applications only need a single bundle
@@ -18,35 +19,31 @@ type UnmarshalFunc func(data []byte, v interface{}) error
 // It is not goroutine safe to modify the bundle while Localizers
 // are reading from it.
 type Bundle struct {
-	defaultLanguage  language.Tag
-	unmarshalFuncs   map[string]UnmarshalFunc
-	messageTemplates map[language.Tag]map[string]*MessageTemplate
+	// DefaultLanguage is the default language of the bundle.
+	DefaultLanguage language.Tag
+
+	// UnmarshalFuncs is a map of file extensions to UnmarshalFuncs.
+	UnmarshalFuncs map[string]UnmarshalFunc
+
+	messageTemplates map[language.Tag]map[string]*internal.MessageTemplate
 	pluralRules      plural.Rules
 	tags             []language.Tag
 	matcher          language.Matcher
 }
 
-// artTag is the language tag used for artifical languages
-// https://en.wikipedia.org/wiki/Codes_for_constructed_languages
-var artTag = language.MustParse("art")
-
-// NewBundle returns a bundle with a default language and a default set of plural rules.
-func NewBundle(defaultLanguage language.Tag) *Bundle {
-	b := &Bundle{
-		defaultLanguage: defaultLanguage,
-		pluralRules:     plural.DefaultRules(),
+func (b *Bundle) init() {
+	if b.pluralRules == nil {
+		b.pluralRules = plural.DefaultRules()
 	}
-	b.pluralRules[artTag] = b.pluralRules.Rule(language.English)
-	b.addTag(defaultLanguage)
-	return b
+	b.addTag(b.DefaultLanguage)
 }
 
 // RegisterUnmarshalFunc registers an UnmarshalFunc for format.
 func (b *Bundle) RegisterUnmarshalFunc(format string, unmarshalFunc UnmarshalFunc) {
-	if b.unmarshalFuncs == nil {
-		b.unmarshalFuncs = make(map[string]UnmarshalFunc)
+	if b.UnmarshalFuncs == nil {
+		b.UnmarshalFuncs = make(map[string]UnmarshalFunc)
 	}
-	b.unmarshalFuncs[format] = unmarshalFunc
+	b.UnmarshalFuncs[format] = unmarshalFunc
 }
 
 // LoadMessageFile loads the bytes from path
@@ -67,13 +64,16 @@ func (b *Bundle) MustLoadMessageFile(path string) {
 	}
 }
 
+// MessageFile represents a parsed message file.
+type MessageFile = internal.MessageFile
+
 // ParseMessageFileBytes parses the bytes in buf to add translations to the bundle.
 //
 // The format of the file is everything after the last ".".
 //
 // The language tag of the file is everything after the second to last "." or after the last path separator, but before the format.
 func (b *Bundle) ParseMessageFileBytes(buf []byte, path string) (*MessageFile, error) {
-	messageFile, err := ParseMessageFileBytes(buf, path, b.unmarshalFuncs)
+	messageFile, err := internal.ParseMessageFileBytes(buf, path, b.UnmarshalFuncs)
 	if err != nil {
 		return nil, err
 	}
@@ -94,19 +94,20 @@ func (b *Bundle) MustParseMessageFileBytes(buf []byte, path string) {
 // AddMessages adds messages for a language.
 // It is useful if your messages are in a format not supported by ParseMessageFileBytes.
 func (b *Bundle) AddMessages(tag language.Tag, messages ...*Message) error {
+	b.init()
 	pluralRule := b.pluralRules.Rule(tag)
 	if pluralRule == nil {
 		return fmt.Errorf("no plural rule registered for %s", tag)
 	}
 	if b.messageTemplates == nil {
-		b.messageTemplates = map[language.Tag]map[string]*MessageTemplate{}
+		b.messageTemplates = map[language.Tag]map[string]*internal.MessageTemplate{}
 	}
 	if b.messageTemplates[tag] == nil {
-		b.messageTemplates[tag] = map[string]*MessageTemplate{}
+		b.messageTemplates[tag] = map[string]*internal.MessageTemplate{}
 		b.addTag(tag)
 	}
 	for _, m := range messages {
-		b.messageTemplates[tag][m.ID] = NewMessageTemplate(m)
+		b.messageTemplates[tag][m.ID] = internal.NewMessageTemplate(m)
 	}
 	return nil
 }

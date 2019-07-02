@@ -1,13 +1,15 @@
-package i18n
+package internal
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 
 	"golang.org/x/text/language"
 )
+
+// UnmarshalFunc unmarshals data into v.
+type UnmarshalFunc func(data []byte, v interface{}) error
 
 // MessageFile represents a parsed message file.
 type MessageFile struct {
@@ -37,105 +39,49 @@ func ParseMessageFileBytes(buf []byte, path string, unmarshalFuncs map[string]Un
 			return nil, fmt.Errorf("no unmarshaler registered for %s", messageFile.Format)
 		}
 	}
-	var err error
 	var raw interface{}
-	if err = unmarshalFunc(buf, &raw); err != nil {
+	if err := unmarshalFunc(buf, &raw); err != nil {
 		return nil, err
 	}
-
-	if messageFile.Messages, err = recGetMessages(raw, isMessage(raw), true); err != nil {
-		return nil, err
-	}
-
-	return messageFile, nil
-}
-
-const nestedSeparator = "."
-
-var errInvalidTranslationFile = errors.New("invalid translation file, expected key-values, got a single value")
-
-// recGetMessages looks for translation messages inside "raw" parameter,
-// scanning nested maps using recursion.
-func recGetMessages(raw interface{}, isMapMessage, isInitialCall bool) ([]*Message, error) {
-	var messages []*Message
-	var err error
-
 	switch data := raw.(type) {
-	case string:
-		if isInitialCall {
-			return nil, errInvalidTranslationFile
-		}
-		m, err := NewMessage(data)
-		return []*Message{m}, err
-
 	case map[string]interface{}:
-		if isMapMessage {
-			m, err := NewMessage(data)
-			return []*Message{m}, err
-		}
-		messages = make([]*Message, 0, len(data))
+		messageFile.Messages = make([]*Message, 0, len(data))
 		for id, data := range data {
-			// recursively scan map items
-			messages, err = addChildMessages(id, data, messages)
+			m, err := NewMessage(data)
 			if err != nil {
 				return nil, err
 			}
+			m.ID = id
+			messageFile.Messages = append(messageFile.Messages, m)
 		}
-
 	case map[interface{}]interface{}:
-		if isMapMessage {
-			m, err := NewMessage(data)
-			return []*Message{m}, err
-		}
-		messages = make([]*Message, 0, len(data))
+		messageFile.Messages = make([]*Message, 0, len(data))
 		for id, data := range data {
 			strid, ok := id.(string)
 			if !ok {
 				return nil, fmt.Errorf("expected key to be string but got %#v", id)
 			}
-			// recursively scan map items
-			messages, err = addChildMessages(strid, data, messages)
+			m, err := NewMessage(data)
 			if err != nil {
 				return nil, err
 			}
+			m.ID = strid
+			messageFile.Messages = append(messageFile.Messages, m)
 		}
-
 	case []interface{}:
 		// Backward compatibility for v1 file format.
-		messages = make([]*Message, 0, len(data))
+		messageFile.Messages = make([]*Message, 0, len(data))
 		for _, data := range data {
-			// recursively scan slice items
-			childMessages, err := recGetMessages(data, isMessage(data), false)
+			m, err := NewMessage(data)
 			if err != nil {
 				return nil, err
 			}
-			messages = append(messages, childMessages...)
+			messageFile.Messages = append(messageFile.Messages, m)
 		}
-
 	default:
 		return nil, fmt.Errorf("unsupported file format %T", raw)
 	}
-
-	return messages, nil
-}
-
-func addChildMessages(id string, data interface{}, messages []*Message) ([]*Message, error) {
-	isChildMessage := isMessage(data)
-	childMessages, err := recGetMessages(data, isChildMessage, false)
-	if err != nil {
-		return nil, err
-	}
-	for _, m := range childMessages {
-		if isChildMessage {
-			if m.ID == "" {
-				m.ID = id // start with innermost key
-			}
-		} else {
-			m.ID = id + nestedSeparator + m.ID // update ID with each nested key on the way
-		}
-		messages = append(messages, m)
-	}
-	return messages, nil
+	return messageFile, nil
 }
 
 func parsePath(path string) (langTag, format string) {

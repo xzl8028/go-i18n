@@ -4,12 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
 	"golang.org/x/text/language"
 )
 
 func TestLocalizer_Localize(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name              string
 		defaultLanguage   language.Tag
 		messages          map[language.Tag][]*Message
@@ -266,34 +265,6 @@ func TestLocalizer_Localize(t *testing.T) {
 				},
 			},
 			expectedLocalized: "I have 1 cat",
-		},
-		{
-			name:            "plural count missing one, default message",
-			defaultLanguage: language.English,
-			acceptLangs:     []string{"en"},
-			conf: &LocalizeConfig{
-				PluralCount: 1,
-				DefaultMessage: &Message{
-					ID:    "Cats",
-					Other: "I have {{.PluralCount}} cats",
-				},
-			},
-			expectedLocalized: "I have 1 cats",
-			expectedErr:       pluralFormNotFoundError{messageID: "Cats", pluralForm: plural.One},
-		},
-		{
-			name:            "plural count missing other, default message",
-			defaultLanguage: language.English,
-			acceptLangs:     []string{"en"},
-			conf: &LocalizeConfig{
-				PluralCount: 2,
-				DefaultMessage: &Message{
-					ID:  "Cats",
-					One: "I have {{.PluralCount}} cat",
-				},
-			},
-			expectedLocalized: "",
-			expectedErr:       pluralFormNotFoundError{messageID: "Cats", pluralForm: plural.Other},
 		},
 		{
 			name:            "plural count other, default message",
@@ -571,34 +542,20 @@ func TestLocalizer_Localize(t *testing.T) {
 			expectedErr: &MessageNotFoundErr{messageID: "Hello"},
 		},
 	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			bundle := NewBundle(test.defaultLanguage)
-			for tag, messages := range test.messages {
-				if err := bundle.AddMessages(tag, messages...); err != nil {
-					t.Fatal(err)
-				}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			bundle := &Bundle{DefaultLanguage: testCase.defaultLanguage}
+			for tag, messages := range testCase.messages {
+				bundle.AddMessages(tag, messages...)
 			}
-			check := func(localized string, err error) {
-				t.Helper()
-				if !reflect.DeepEqual(err, test.expectedErr) {
-					t.Errorf("expected error %#v; got %#v", test.expectedErr, err)
-				}
-				if localized != test.expectedLocalized {
-					t.Errorf("expected localized string %q; got %q", test.expectedLocalized, localized)
-				}
+			localizer := NewLocalizer(bundle, testCase.acceptLangs...)
+			localized, err := localizer.Localize(testCase.conf)
+			if !reflect.DeepEqual(err, testCase.expectedErr) {
+				t.Errorf("expected error %#v; got %#v", testCase.expectedErr, err)
 			}
-			localizer := NewLocalizer(bundle, test.acceptLangs...)
-			check(localizer.Localize(test.conf))
-
-			if test.conf.DefaultMessage != nil && reflect.DeepEqual(test.conf, &LocalizeConfig{DefaultMessage: test.conf.DefaultMessage}) {
-				check(localizer.LocalizeMessage(test.conf.DefaultMessage))
+			if localized != testCase.expectedLocalized {
+				t.Errorf("expected localized string %q; got %q", testCase.expectedLocalized, localized)
 			}
-
-			// if test.conf.MessageID != "" && reflect.DeepEqual(test.conf, &LocalizeConfig{MessageID: test.conf.MessageID}) {
-			// 	check(localizer.LocalizeMessageID(test.conf.MessageID))
-			// }
 		})
 	}
 }

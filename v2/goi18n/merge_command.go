@@ -10,9 +10,9 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
-	"github.com/nicksnyder/go-i18n/v2/internal"
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/mattermost/go-i18n/v2/i18n"
+	"github.com/mattermost/go-i18n/v2/internal"
+	"github.com/mattermost/go-i18n/v2/internal/plural"
 	"golang.org/x/text/language"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -108,21 +108,21 @@ type fileSystemOp struct {
 }
 
 func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdir, outputFormat string) (*fileSystemOp, error) {
-	unmerged := make(map[language.Tag][]map[string]*i18n.MessageTemplate)
-	sourceMessageTemplates := make(map[string]*i18n.MessageTemplate)
-	unmarshalFuncs := map[string]i18n.UnmarshalFunc{
+	unmerged := make(map[language.Tag][]map[string]*internal.MessageTemplate)
+	sourceMessageTemplates := make(map[string]*internal.MessageTemplate)
+	unmarshalFuncs := map[string]internal.UnmarshalFunc{
 		"json": json.Unmarshal,
 		"toml": toml.Unmarshal,
 		"yaml": yaml.Unmarshal,
 	}
 	for path, content := range messageFiles {
-		mf, err := i18n.ParseMessageFileBytes(content, path, unmarshalFuncs)
+		mf, err := internal.ParseMessageFileBytes(content, path, unmarshalFuncs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load message file %s: %s", path, err)
 		}
-		templates := map[string]*i18n.MessageTemplate{}
+		templates := map[string]*internal.MessageTemplate{}
 		for _, m := range mf.Messages {
-			templates[m.ID] = i18n.NewMessageTemplate(m)
+			templates[m.ID] = internal.NewMessageTemplate(m)
 		}
 		if mf.Tag == sourceLanguageTag {
 			for _, template := range templates {
@@ -141,7 +141,7 @@ func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdi
 	}
 
 	pluralRules := plural.DefaultRules()
-	all := make(map[language.Tag]map[string]*i18n.MessageTemplate)
+	all := make(map[language.Tag]map[string]*internal.MessageTemplate)
 	all[sourceLanguageTag] = sourceMessageTemplates
 	for _, srcTemplate := range sourceMessageTemplates {
 		for dstLangTag, messageTemplates := range unmerged {
@@ -155,11 +155,11 @@ func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdi
 				continue
 			}
 			if all[dstLangTag] == nil {
-				all[dstLangTag] = make(map[string]*i18n.MessageTemplate)
+				all[dstLangTag] = make(map[string]*internal.MessageTemplate)
 			}
 			dstMessageTemplate := all[dstLangTag][srcTemplate.ID]
 			if dstMessageTemplate == nil {
-				dstMessageTemplate = &i18n.MessageTemplate{
+				dstMessageTemplate = &internal.MessageTemplate{
 					Message: &i18n.Message{
 						ID:          srcTemplate.ID,
 						Description: srcTemplate.Description,
@@ -193,10 +193,10 @@ func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdi
 		}
 	}
 
-	translate := make(map[language.Tag]map[string]*i18n.MessageTemplate)
-	active := make(map[language.Tag]map[string]*i18n.MessageTemplate)
+	translate := make(map[language.Tag]map[string]*internal.MessageTemplate)
+	active := make(map[language.Tag]map[string]*internal.MessageTemplate)
 	for langTag, messageTemplates := range all {
-		active[langTag] = make(map[string]*i18n.MessageTemplate)
+		active[langTag] = make(map[string]*internal.MessageTemplate)
 		if langTag == sourceLanguageTag {
 			active[langTag] = messageTemplates
 			continue
@@ -212,7 +212,7 @@ func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdi
 			activeMessageTemplate, translateMessageTemplate := activeDst(srcMessageTemplate, messageTemplate, pluralRule)
 			if translateMessageTemplate != nil {
 				if translate[langTag] == nil {
-					translate[langTag] = make(map[string]*i18n.MessageTemplate)
+					translate[langTag] = make(map[string]*internal.MessageTemplate)
 				}
 				translate[langTag][messageTemplate.ID] = translateMessageTemplate
 			}
@@ -246,7 +246,7 @@ func merge(messageFiles map[string][]byte, sourceLanguageTag language.Tag, outdi
 }
 
 // activeDst returns the active part of the dst and whether dst is a complete translation of src.
-func activeDst(src, dst *i18n.MessageTemplate, pluralRule *plural.Rule) (active *i18n.MessageTemplate, translateMessageTemplate *i18n.MessageTemplate) {
+func activeDst(src, dst *internal.MessageTemplate, pluralRule *plural.Rule) (active *internal.MessageTemplate, translateMessageTemplate *internal.MessageTemplate) {
 	pluralForms := pluralRule.PluralForms
 	if len(src.PluralTemplates) == 1 {
 		pluralForms = map[plural.Form]struct{}{
@@ -257,7 +257,7 @@ func activeDst(src, dst *i18n.MessageTemplate, pluralRule *plural.Rule) (active 
 		dt := dst.PluralTemplates[pluralForm]
 		if dt == nil || dt.Src == "" {
 			if translateMessageTemplate == nil {
-				translateMessageTemplate = &i18n.MessageTemplate{
+				translateMessageTemplate = &internal.MessageTemplate{
 					Message: &i18n.Message{
 						ID:          src.ID,
 						Description: src.Description,
@@ -270,7 +270,7 @@ func activeDst(src, dst *i18n.MessageTemplate, pluralRule *plural.Rule) (active 
 			continue
 		}
 		if active == nil {
-			active = &i18n.MessageTemplate{
+			active = &internal.MessageTemplate{
 				Message: &i18n.Message{
 					ID:          src.ID,
 					Description: src.Description,
@@ -284,7 +284,7 @@ func activeDst(src, dst *i18n.MessageTemplate, pluralRule *plural.Rule) (active 
 	return
 }
 
-func hash(t *i18n.MessageTemplate) string {
+func hash(t *internal.MessageTemplate) string {
 	h := sha1.New()
 	io.WriteString(h, t.Description)
 	io.WriteString(h, t.PluralTemplates[plural.Other].Src)

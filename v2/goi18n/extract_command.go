@@ -9,9 +9,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"github.com/mattermost/go-i18n/v2/i18n"
+	"github.com/mattermost/go-i18n/v2/internal"
 )
 
 func usageExtract() {
@@ -80,11 +80,6 @@ func (ec *extractCommand) execute() error {
 				return nil
 			}
 
-			// Don't extract from test files.
-			if strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-
 			buf, err := ioutil.ReadFile(path)
 			if err != nil {
 				return err
@@ -99,9 +94,9 @@ func (ec *extractCommand) execute() error {
 			return err
 		}
 	}
-	messageTemplates := map[string]*i18n.MessageTemplate{}
+	messageTemplates := map[string]*internal.MessageTemplate{}
 	for _, m := range messages {
-		if mt := i18n.NewMessageTemplate(m); mt != nil {
+		if mt := internal.NewMessageTemplate(m); mt != nil {
 			messageTemplates[m.ID] = mt
 		}
 	}
@@ -131,81 +126,37 @@ func newExtractor(file *ast.File) *extractor {
 type extractor struct {
 	i18nPackageName string
 	messages        []*i18n.Message
+	errs            []error
+}
+
+func (e *extractor) err(err error) {
+	e.errs = append(e.errs, err)
 }
 
 func (e *extractor) Visit(node ast.Node) ast.Visitor {
-	e.extractMessages(node)
+	e.extractMessage(node)
 	return e
 }
 
-func (e *extractor) extractMessages(node ast.Node) {
+func (e *extractor) extractMessage(node ast.Node) {
 	cl, ok := node.(*ast.CompositeLit)
 	if !ok {
 		return
 	}
-	switch t := cl.Type.(type) {
-	case *ast.SelectorExpr:
-		if !e.isMessageType(t) {
-			return
-		}
-		e.extractMessage(cl)
-	case *ast.ArrayType:
-		if !e.isMessageType(t.Elt) {
-			return
-		}
-		for _, el := range cl.Elts {
-			ecl, ok := el.(*ast.CompositeLit)
-			if !ok {
-				continue
-			}
-			e.extractMessage(ecl)
-		}
-	case *ast.MapType:
-		if !e.isMessageType(t.Value) {
-			return
-		}
-		for _, el := range cl.Elts {
-			kve, ok := el.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			vcl, ok := kve.Value.(*ast.CompositeLit)
-			if !ok {
-				continue
-			}
-			e.extractMessage(vcl)
-		}
-	}
-}
-
-func (e *extractor) isMessageType(expr ast.Expr) bool {
-	se := unwrapSelectorExpr(expr)
-	if se == nil {
-		return false
+	se, ok := cl.Type.(*ast.SelectorExpr)
+	if !ok {
+		return
 	}
 	if se.Sel.Name != "Message" && se.Sel.Name != "LocalizeConfig" {
-		return false
+		return
 	}
 	x, ok := se.X.(*ast.Ident)
 	if !ok {
-		return false
+		return
 	}
-	return x.Name == e.i18nPackageName
-}
-
-func unwrapSelectorExpr(e ast.Expr) *ast.SelectorExpr {
-	switch et := e.(type) {
-	case *ast.SelectorExpr:
-		return et
-	case *ast.StarExpr:
-		se, _ := et.X.(*ast.SelectorExpr)
-		return se
-	default:
-		return nil
+	if x.Name != e.i18nPackageName {
+		return
 	}
-}
-
-func (e *extractor) extractMessage(cl *ast.CompositeLit) {
 	data := make(map[string]string)
 	for _, elt := range cl.Elts {
 		kve, ok := elt.(*ast.KeyValueExpr)
@@ -225,10 +176,11 @@ func (e *extractor) extractMessage(cl *ast.CompositeLit) {
 	if len(data) == 0 {
 		return
 	}
-	if messageID := data["MessageID"]; messageID != "" {
-		data["ID"] = messageID
+	if se.Sel.Name == "Message" {
+		e.messages = append(e.messages, internal.MustNewMessage(data))
+	} else if messageID := data["MessageID"]; messageID != "" {
+		e.messages = append(e.messages, &i18n.Message{ID: messageID})
 	}
-	e.messages = append(e.messages, i18n.MustNewMessage(data))
 }
 
 func extractStringLiteral(expr ast.Expr) (string, bool) {
@@ -237,11 +189,7 @@ func extractStringLiteral(expr ast.Expr) (string, bool) {
 		if v.Kind != token.STRING {
 			return "", false
 		}
-		s := v.Value[1 : len(v.Value)-1]
-		if v.Value[0] == '"' {
-			s = strings.Replace(s, `\"`, `"`, -1)
-		}
-		return s, true
+		return v.Value[1 : len(v.Value)-1], true
 	case *ast.BinaryExpr:
 		if v.Op != token.ADD {
 			return "", false
@@ -262,7 +210,7 @@ func extractStringLiteral(expr ast.Expr) (string, bool) {
 
 func i18nPackageName(file *ast.File) string {
 	for _, i := range file.Imports {
-		if i.Path.Kind == token.STRING && i.Path.Value == `"github.com/nicksnyder/go-i18n/v2/i18n"` {
+		if i.Path.Kind == token.STRING && i.Path.Value == `"github.com/mattermost/go-i18n/v2/i18n"` {
 			if i.Name == nil {
 				return "i18n"
 			}

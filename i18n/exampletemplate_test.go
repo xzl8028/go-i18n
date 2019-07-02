@@ -1,10 +1,9 @@
 package i18n_test
 
 import (
+	"github.com/mattermost/go-i18n/i18n"
 	"os"
 	"text/template"
-
-	"github.com/nicksnyder/go-i18n/i18n"
 )
 
 var funcMap = map[string]interface{}{
