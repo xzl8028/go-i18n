@@ -3,7 +3,7 @@ package i18n_test
 import (
 	"fmt"
 
-	"github.com/mattermost/go-i18n/i18n"
+	"github.com/xzl8028/go-i18n/i18n"
 )
 
 func Example() {

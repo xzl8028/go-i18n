@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/BurntSushi/toml"
-	"github.com/mattermost/go-i18n/v2/i18n"
+	"github.com/xzl8028/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 )
 

@@ -13,9 +13,9 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/mattermost/go-i18n/i18n/bundle"
-	"github.com/mattermost/go-i18n/i18n/language"
-	"github.com/mattermost/go-i18n/i18n/translation"
+	"github.com/xzl8028/go-i18n/i18n/bundle"
+	"github.com/xzl8028/go-i18n/i18n/language"
+	"github.com/xzl8028/go-i18n/i18n/translation"
 )
 
 type constantsCommand struct {

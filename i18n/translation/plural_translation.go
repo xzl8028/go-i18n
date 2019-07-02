@@ -1,7 +1,7 @@
 package translation
 
 import (
-	"github.com/mattermost/go-i18n/i18n/language"
+	"github.com/xzl8028/go-i18n/i18n/language"
 )
 
 type pluralTranslation struct {
